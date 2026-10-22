@@ -1,0 +1,157 @@
+[build-system]
+requires = ["hatchling>=1.27", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "instackup"
+dynamic = ["version"]
+description = "A package to ease interaction with cloud services, DB connections and commonly used functionalities in data analytics."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Daniel Lavedonio de Lima", email = "daniel.lavedonio@gmail.com" }]
+requires-python = ">=3.11"
+keywords = ["bigquery", "redshift", "s3", "gcs", "google-sheets", "postgresql", "mysql", "data-engineering"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pandas>=2.2",
+    "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+aws = ["boto3>=1.34"]
+gcp = [
+    "google-auth>=2.29",
+    "google-cloud-bigquery[pandas]>=3.25",
+    "google-cloud-bigquery-datatransfer>=3.15",
+    "google-cloud-secret-manager>=2.20",
+    "google-cloud-storage>=2.18",
+    "pandas-gbq>=0.23",
+]
+gsheets = ["google-auth>=2.29", "gspread>=6.1"]
+postgresql = ["psycopg2-binary>=2.9.9"]
+mysql = ["mysql-connector-python>=9.0"]
+redshift = ["instackup[aws,postgresql]"]
+all = ["instackup[aws,gcp,gsheets,mysql,postgresql]"]
+
+[project.urls]
+Homepage = "https://github.com/Lavedonio/instackup"
+Documentation = "https://github.com/Lavedonio/instackup/tree/main/docs"
+Changelog = "https://github.com/Lavedonio/instackup/tree/main/version_logs"
+Issues = "https://github.com/Lavedonio/instackup/issues"
+
+[dependency-groups]
+test = [
+    "moto[redshift,s3,secretsmanager]>=5.1",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+]
+lint = [
+    "mypy>=1.15",
+    "pandas-stubs>=2.2",
+    "ruff>=0.15",
+    "types-psycopg2>=2.9",
+    "types-PyYAML>=6.0",
+]
+dev = [{ include-group = "test" }, { include-group = "lint" }]
+
+# ----------------------------------------------------------------------------
+# Build
+# ----------------------------------------------------------------------------
+
+[tool.hatch.version]
+source = "vcs"
+# PyPI rejects local version labels (the "+g1a2b3c" part), so drop them.
+raw-options = { local_scheme = "no-local-version" }
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/instackup/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/instackup"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/instackup", "tests", "docs", "README.md", "LICENSE"]
+
+# ----------------------------------------------------------------------------
+# Tooling
+# ----------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+# Code samples in the docs are hand-aligned for readability.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = [
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "PT",  # flake8-pytest-style
+    "RUF", # ruff-specific
+    "SIM", # flake8-simplify
+    "UP",  # pyupgrade
+    "W",   # pycodestyle warnings
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = false
+
+[[tool.mypy.overrides]]
+module = [
+    "boto3.*",
+    "botocore.*",
+    "google.*",
+    "gspread.*",
+    "mysql.*",
+    "pandas_gbq.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "integration: tests that need real external services (PostgreSQL, MySQL); skipped unless their env vars are set",
+]
+
+[tool.coverage.run]
+source = ["instackup"]
+branch = true
+omit = ["*/_version.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]
