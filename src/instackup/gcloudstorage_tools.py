@@ -285,6 +285,7 @@ class GCloudStorageTool:
         """
         file_format = file_format.upper()
         if file_format == "CSV":
+            kwargs.setdefault("lineterminator", "\n")  # pandas defaults to the OS separator
             data, content_type = dataframe.to_csv(**kwargs), "text/csv"
         elif file_format == "JSON":
             data, content_type = dataframe.to_json(**kwargs), "application/json"

@@ -125,10 +125,15 @@ def test_relative_key_file_from_store_resolves_against_credentials_file(
     assert auth.project_id == "file-project"
 
 
+def set_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))  # Used by expanduser() on Windows
+
+
 def test_absolute_and_home_key_files_from_store(
     google_api: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    set_home(monkeypatch, tmp_path / "home")
     credentials_file = write_credentials_file(
         tmp_path / "config",
         f"google:\n  default:\n    service_account_file: ~/sa.json\n"
@@ -164,7 +169,7 @@ def test_relative_key_file_in_explicit_credentials_resolves_against_cwd(
 def test_explicit_key_file_expands_home(
     google_api: SimpleNamespace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
+    set_home(monkeypatch, tmp_path)
 
     resolve_google_auth(credentials={"service_account_file": "~/sa.json"})
 

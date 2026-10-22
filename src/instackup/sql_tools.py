@@ -331,6 +331,8 @@ def _import_driver(module: str, extra: str) -> ModuleType:
         return importlib.import_module(module)
     except ImportError as exc:
         raise ImportError(missing_extra_message(extra)) from exc
+    except Exception as exc:  # Installed but broken, e.g. incompatible with this Python build
+        raise ImportError(f"{module} is installed but can't be imported: {exc!r}") from exc
 
 
 def _database_errors() -> tuple[type[Exception], ...]:
@@ -339,7 +341,7 @@ def _database_errors() -> tuple[type[Exception], ...]:
     for module, attribute in (("psycopg2", "Error"), ("mysql.connector", "Error")):
         try:
             errors.append(getattr(importlib.import_module(module), attribute))
-        except ImportError:
+        except Exception:  # Not installed or broken: it can't be the source of an error then
             continue
     return tuple(errors)
 

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import importlib
 import sqlite3
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
-import mysql.connector
 import pandas as pd
 import psycopg2
 import pytest
 
+from instackup import sql_tools
 from instackup.credentials import CredentialsNotFoundError
 from instackup.sql_tools import (
     MySQLTool,
@@ -162,8 +164,32 @@ def psycopg2_connect(monkeypatch: pytest.MonkeyPatch, fake_cursor: MagicMock) ->
 def mysql_connect(monkeypatch: pytest.MonkeyPatch, fake_cursor: MagicMock) -> MagicMock:
     connect = MagicMock()
     connect.return_value.cursor.return_value = fake_cursor
-    monkeypatch.setattr(mysql.connector, "connect", connect)
+    real_import = sql_tools._import_driver
+
+    def import_driver(module: str, extra: str) -> Any:
+        return SimpleNamespace(connect=connect) if module == "mysql.connector" else real_import(module, extra)
+
+    monkeypatch.setattr(sql_tools, "_import_driver", import_driver)
     return connect
+
+
+def test_a_broken_driver_does_not_break_other_databases(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_import_module = importlib.import_module
+
+    def import_module(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "mysql.connector":
+            raise AttributeError("module 'ssl' has no attribute 'PROTOCOL_TLSv1'")
+        return real_import_module(name, *args, **kwargs)
+
+    sql_tools._import_driver.cache_clear()
+    monkeypatch.setattr(sql_tools.importlib, "import_module", import_module)
+    try:
+        with SQLiteTool() as db, pytest.raises(sqlite3.OperationalError):
+            db.query("SELECT * FROM missing")
+        with pytest.raises(ImportError, match="installed but can't be imported"):
+            MySQLTool(credentials={}).connect()
+    finally:
+        sql_tools._import_driver.cache_clear()
 
 
 def test_postgresql_uses_store_credentials(use_credentials, psycopg2_connect: MagicMock) -> None:

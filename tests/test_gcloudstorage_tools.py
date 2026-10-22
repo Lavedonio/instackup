@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -479,6 +480,16 @@ def test_upload_from_dataframe(
     file_tool.upload_from_dataframe(DATAFRAME, file_format, **kwargs)
 
     blobs["folder/file.csv"].upload_from_string.assert_called_once_with(expected_data, content_type=content_type)
+
+
+def test_upload_from_dataframe_csv_line_endings_dont_depend_on_the_os(
+    file_tool: GCloudStorageTool, blobs: dict[str, MagicMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(os, "linesep", "\r\n")  # As on Windows
+
+    file_tool.upload_from_dataframe(DATAFRAME, index=False)
+
+    blobs["folder/file.csv"].upload_from_string.assert_called_once_with("id,name\n1,a\n2,b\n", content_type="text/csv")
 
 
 def test_upload_from_dataframe_to_named_file(file_tool: GCloudStorageTool, blobs: dict[str, MagicMock]) -> None:
