@@ -302,3 +302,9 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.gitignore.io/api/linux,macos,python,pycharm,windows,sublimetext
+
+### instackup ###
+# Generated at build time by hatch-vcs
+src/instackup/_version.py
+.venv/
+.ruff_cache/

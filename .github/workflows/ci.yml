@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # Reused by release.yml so nothing is published without passing CI
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  UV_LOCKED: "1" # Fail if uv.lock is out of date with pyproject.toml
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.13"
+      - run: uv sync --all-extras
+      - run: uv run ruff format --check
+      - run: uv run ruff check --output-format=github
+      - run: uv run mypy
+
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
+        include:
+          - os: macos-latest
+            python-version: "3.14"
+          - os: windows-latest
+            python-version: "3.14"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # Version is derived from git tags
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --all-extras
+      - run: uv run pytest --cov --cov-report=term --cov-report=xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        with:
+          name: coverage
+          path: coverage.xml
+
+  lowest-dependencies:
+    name: Test with lowest supported dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.11"
+      # Install the minimum versions declared in pyproject.toml to keep those bounds honest.
+      - run: uv venv
+      - run: uv pip install --resolution lowest-direct -e ".[all]" --group test
+      - run: uv run --no-sync pytest
+
+  integration:
+    name: Integration (PostgreSQL, MySQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -uroot -pmysql" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TEST_POSTGRESQL_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      TEST_MYSQL_URL: mysql://root:mysql@127.0.0.1:3306/test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.14"
+      - run: uv sync --all-extras
+      - run: uv run pytest -m integration tests/integration
+
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.14"
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Smoke test the wheel in a clean environment
+        run: |
+          uv venv --clear .smoke
+          uv pip install --python .smoke dist/*.whl
+          .smoke/bin/python -c "import instackup; from instackup import SQLiteTool; print(instackup.__version__)"
